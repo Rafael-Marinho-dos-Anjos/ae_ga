@@ -7,7 +7,7 @@ from torch import nn
 
 
 class GeneticAlgorithm(nn.Module):
-    def __init__(self, pop_len: int, n_genes: int, *args, **kwargs) -> None:
+    def __init__(self, pop_len: int, n_genes: int, device=None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         if "inicialization" not in kwargs.keys():
@@ -18,19 +18,19 @@ class GeneticAlgorithm(nn.Module):
             self.population = torch.zeros((pop_len, n_genes))
         elif kwargs["inicialization"].upper() == "RANDOM":
             self.population = torch.rand((pop_len, n_genes))
+        
+        self.device = device if device else torch.device("cpu")
+        self.population = self.population.to(self.device)
 
         self.softmax = nn.Softmax(dim=-1)
         
-    def objective_func(self, coefs):
-        x = torch.matmul(self.population, coefs)
-        self.scores = x
-
-        x = self.softmax(x)
+    def objective_func(self, func):
+        x = func(self.population)
 
         return x
 
-    def new_population(self, coefs, generation = 0):
-        scores = self.objective_func(coefs)
+    def new_population(self, func, generation = 0):
+        scores = self.objective_func(func)
         spread = np.exp(-1 * generation / 10)
         mut_ch = 0.1 * np.exp(-1 * generation / 10)
 
@@ -52,7 +52,7 @@ class GeneticAlgorithm(nn.Module):
             son = ind_1 + delta * crossing_factor
 
             if random() <= mut_ch:
-                mutation = torch.rand((ind_1.shape[0]))
+                mutation = torch.rand((ind_1.shape[0]), device=self.device)
                 mutation = mutation / torch.sqrt(torch.sum(torch.pow(mutation, 2))) * spread
 
                 son = son + mutation
@@ -62,11 +62,21 @@ class GeneticAlgorithm(nn.Module):
         self.population = torch.stack([__cross(__choice(), __choice()) for i in range(self.population.shape[0])])
 
 if __name__ == "__main__":
-    ga = GeneticAlgorithm(100, 5)
-    coefs = torch.rand((5))
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cpu")
+    ga = GeneticAlgorithm(100, 5, device=device)
+    coefs = torch.rand((5), device=device)
+
+    def func(pop):
+        x = torch.matmul(ga.population, coefs)
+        ga.scores = x
+
+        x = ga.softmax(x)
+
+        return x
 
     for i in range(100):
-        ga.new_population(coefs, i)
+        ga.new_population(func, i)
         print("", i, torch.max(ga.scores))
     
     index = torch.max(ga.scores, dim=0).indices
