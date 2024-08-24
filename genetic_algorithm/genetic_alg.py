@@ -34,8 +34,6 @@ class GeneticAlgorithm(nn.Module):
         spread = np.exp(-1 * generation / 10)
         mut_ch = 0.1 * np.exp(-1 * generation / 10)
 
-        print(spread, mut_ch, end="")
-
         def __choice():
             loc = random()
             acc = 0
@@ -67,7 +65,7 @@ if __name__ == "__main__":
     ga = GeneticAlgorithm(100, 5)
     coefs = torch.rand((5))
 
-    for i in range(10):
+    for i in range(100):
         ga.new_population(coefs, i)
         print("", i, torch.max(ga.scores))
     
