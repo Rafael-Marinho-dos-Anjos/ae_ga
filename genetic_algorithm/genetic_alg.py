@@ -29,8 +29,6 @@ class GeneticAlgorithm(nn.Module):
         self.device = device if device else torch.device("cpu")
         self.population = self.population.to(self.device)
 
-        self.softmax = nn.Softmax(dim=-1)
-
         self.__cross_fn = torch.func.vmap(self.__cross, randomness="different")
         
     def __choice(self):
@@ -110,13 +108,14 @@ if __name__ == "__main__":
 
     best_scores = list()
 
+    softmin = torch.nn.Softmin()
     operator = torch.vmap(
         lambda x: x[0]*coefs[0] + (x[1]**2)*coefs[1] + (x[2]**3)*coefs[2] + (x[3]**4)*coefs[3] + (x[4]**5)*coefs[4] + coefs[5]
     )
     def func(pop):
         x = operator(pop)
-        x = x * (x > 0)
-        best_scores.append(torch.max(x))
+        best_scores.append(torch.max(x).item())
+        x = softmin(x)
 
         return x
 
