@@ -1,6 +1,7 @@
 
 import numpy as np
 from random import random
+from functorch.experimental.control_flow import map
 
 import torch
 from torch import nn
@@ -23,62 +24,84 @@ class GeneticAlgorithm(nn.Module):
         self.population = self.population.to(self.device)
 
         self.softmax = nn.Softmax(dim=-1)
+
+        self.__cross_fn = torch.func.vmap(self.__cross, randomness="different")
         
     def objective_func(self, func):
         x = func(self.population)
 
         return x
+    
+    
+    def __choice(self):
+        loc = torch.rand((self.population.shape[0], 1), device=self.device)
+        index = torch.sum(self.scores < loc, dim=-1)
+        
+        return self.population[index]
+    
+    def __cross(self, ind_1, ind_2):
+        spread = np.exp(-1 * self.gen / 10)
+        mut_ch = 0.1 * np.exp(-1 * self.gen / 10)
+
+        crossing_factor = (random() - 0.5) * spread
+        delta = ind_2 - ind_1
+
+        son = ind_1 + delta * crossing_factor
+
+        if random() <= mut_ch:
+            mutation = torch.rand((ind_1.shape[0]), device=self.device)
+            mutation = mutation / torch.sqrt(torch.sum(torch.pow(mutation, 2))) * spread
+
+            son = son + mutation
+        
+        return son
 
     def new_population(self, func, generation = 0):
-        scores = self.objective_func(func)
-        spread = np.exp(-1 * generation / 10)
-        mut_ch = 0.1 * np.exp(-1 * generation / 10)
-
-        def __choice():
-            loc = random()
-            acc = 0
-            index = -1
-            
-            while acc < loc:
-                index += 1
-                acc += scores[index]
-            
-            return self.population[index]
+        self.update_scores(self.objective_func(func))
+        self.gen = generation
         
-        def __cross(ind_1, ind_2):
-            crossing_factor = (random() - 0.5) * spread
-            delta = ind_2 - ind_1
+        new_population = torch.zeros(self.population.shape)
+        new_population = self.__cross_fn(self.__choice(), self.__choice())
+        self.population = new_population
 
-            son = ind_1 + delta * crossing_factor
+    def update_scores(self, scores: torch.Tensor):
+        if scores.dim() == 2 and scores.shape[0] == 1:
+            scores = scores.squeeze()
 
-            if random() <= mut_ch:
-                mutation = torch.rand((ind_1.shape[0]), device=self.device)
-                mutation = mutation / torch.sqrt(torch.sum(torch.pow(mutation, 2))) * spread
+        if torch.sum(scores) != 1:
+            scores = scores / torch.sum(scores)
 
-                son = son + mutation
-            
-            return son
+        acc_scores = torch.zeros(scores.shape, device=self.device)
+        acc = 0
+        for i, score in enumerate(scores):
+            acc += score
+            acc_scores[i] = acc
         
-        self.population = torch.stack([__cross(__choice(), __choice()) for i in range(self.population.shape[0])])
+        acc_scores[-1] = 1
+        
+        self.scores = acc_scores
+
 
 if __name__ == "__main__":
+    from time import time
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     device = torch.device("cpu")
-    ga = GeneticAlgorithm(100, 5, device=device)
-    coefs = torch.rand((5), device=device)
+    ga = GeneticAlgorithm(1000, 50, device=device)
+    coefs = torch.rand((50), device=device)
 
     def func(pop):
-        x = torch.matmul(ga.population, coefs)
-        ga.scores = x
-
-        x = ga.softmax(x)
+        x = torch.matmul(pop, coefs)
+        print("", i, torch.max(x))
 
         return x
 
-    for i in range(100):
+    start = time()
+    for i in range(1000):
         ga.new_population(func, i)
-        print("", i, torch.max(ga.scores))
     
     index = torch.max(ga.scores, dim=0).indices
     print(ga.population[index])
     print(coefs)
+
+    print("\n\nTempo de execução: {} segundos".format(time() - start))
+    print(f"Device: {device}")
