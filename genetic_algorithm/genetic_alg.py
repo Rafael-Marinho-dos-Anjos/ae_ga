@@ -16,13 +16,15 @@ class GeneticAlgorithm(nn.Module):
         super().__init__(*args, **kwargs)
 
         if "inicialization" not in kwargs.keys():
-            self.population = torch.rand((pop_len, n_genes))
+            self.population = torch.rand((pop_len, n_genes)) * 2 - 1
         elif kwargs["inicialization"].upper() == "ONES":
             self.population = torch.ones((pop_len, n_genes))
         elif kwargs["inicialization"].upper() == "ZERO":
             self.population = torch.zeros((pop_len, n_genes))
         elif kwargs["inicialization"].upper() == "RANDOM":
             self.population = torch.rand((pop_len, n_genes))
+        elif kwargs["inicialization"].upper() == "RANDOM_W_NEGATIVES":
+            self.population = torch.rand((pop_len, n_genes)) * 2 - 1
         
         self.device = device if device else torch.device("cpu")
         self.population = self.population.to(self.device)
@@ -108,9 +110,12 @@ if __name__ == "__main__":
 
     best_scores = list()
 
-    operator = torch.vmap(lambda x: x[0]*coefs[0] + (x[1]**2)*coefs[1] + (x[2]**3)*coefs[2] + (x[3]**4)*coefs[3] + (x[4]**5)*coefs[4] + coefs[5])
+    operator = torch.vmap(
+        lambda x: x[0]*coefs[0] + (x[1]**2)*coefs[1] + (x[2]**3)*coefs[2] + (x[3]**4)*coefs[3] + (x[4]**5)*coefs[4] + coefs[5]
+    )
     def func(pop):
         x = operator(pop)
+        x = x * (x > 0)
         best_scores.append(torch.max(x))
 
         return x
