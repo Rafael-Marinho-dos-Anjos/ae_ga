@@ -7,6 +7,10 @@ import torch
 from torch import nn
 
 
+class ScoresNotComputedException(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+
 class GeneticAlgorithm(nn.Module):
     def __init__(self, pop_len: int, n_genes: int, device=None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -27,12 +31,6 @@ class GeneticAlgorithm(nn.Module):
 
         self.__cross_fn = torch.func.vmap(self.__cross, randomness="different")
         
-    def objective_func(self, func):
-        x = func(self.population)
-
-        return x
-    
-    
     def __choice(self):
         loc = torch.rand((self.population.shape[0], 1), device=self.device)
         index = torch.sum(self.scores < loc, dim=-1)
@@ -57,14 +55,14 @@ class GeneticAlgorithm(nn.Module):
         return son
 
     def new_population(self, func, generation = 0):
-        self.update_scores(func(self.population))
+        self.__update_scores(func(self.population))
         self.gen = generation
         
         new_population = torch.zeros(self.population.shape)
         new_population = self.__cross_fn(self.__choice(), self.__choice())
         self.population = new_population
 
-    def update_scores(self, scores: torch.Tensor):
+    def __update_scores(self, scores: torch.Tensor):
         if scores.dim() == 2 and scores.shape[0] == 1:
             scores = scores.squeeze()
 
@@ -80,6 +78,16 @@ class GeneticAlgorithm(nn.Module):
         acc_scores[-1] = 1
         
         self.scores = acc_scores
+    
+    def best_individual(self):
+        if hasattr(self, "scores"):
+            index = torch.max(ga.scores, dim=0).indices
+            return self.population[index]
+
+        else:
+            raise ScoresNotComputedException(
+                "This population does not have scores computed. Please execute train to compute it."
+            )
 
 
 if __name__ == "__main__":
@@ -88,7 +96,6 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     device = torch.device("cpu")
     ga = GeneticAlgorithm(100, 5, device=device)
     coefs = torch.rand((5), device=device)
@@ -104,8 +111,7 @@ if __name__ == "__main__":
     for i in tqdm(range(100)):
         ga.new_population(func, i)
     
-    index = torch.max(ga.scores, dim=0).indices
-    print(ga.population[index])
+    print(ga.best_individual())
     print(coefs)
 
     print("\n\nTempo de execução: {} segundos".format(time() - start))
