@@ -33,7 +33,7 @@ class GeneticAlgorithm(nn.Module):
         
     def __choice(self):
         loc = torch.rand((self.population.shape[0], 1), device=self.device)
-        index = torch.sum(self.scores < loc, dim=-1)
+        index = torch.sum(self.acc_scores < loc, dim=-1)
         
         return self.population[index]
     
@@ -54,12 +54,17 @@ class GeneticAlgorithm(nn.Module):
         
         return son
 
-    def new_population(self, func, generation = 0):
+    def new_population(self, func, generation=0, n_survivors=0):
         self.__update_scores(func(self.population))
         self.gen = generation
         
         new_population = torch.zeros(self.population.shape)
         new_population = self.__cross_fn(self.__choice(), self.__choice())
+
+        if n_survivors > 0:
+            survivors = torch.topk(self.scores, k=n_survivors).indices
+            new_population[0: n_survivors] = self.population[survivors]
+
         self.population = new_population
 
     def __update_scores(self, scores: torch.Tensor):
@@ -77,11 +82,12 @@ class GeneticAlgorithm(nn.Module):
         
         acc_scores[-1] = 1
         
-        self.scores = acc_scores
+        self.scores = scores
+        self.acc_scores = acc_scores
     
     def best_individual(self):
         if hasattr(self, "scores"):
-            index = torch.max(ga.scores, dim=0).indices
+            index = torch.argmax(self.scores, dim=0)
             return self.population[index]
 
         else:
@@ -98,18 +104,20 @@ if __name__ == "__main__":
 
     device = torch.device("cpu")
     ga = GeneticAlgorithm(100, 5, device=device)
-    coefs = torch.rand((5), device=device)
+    coefs = torch.rand((6), device=device) * 2 - 1
 
     best_scores = list()
+
+    operator = torch.vmap(lambda x: x[0]*coefs[0] + (x[1]**2)*coefs[1] + (x[2]**3)*coefs[2] + (x[3]**4)*coefs[3] + (x[4]**5)*coefs[4] + coefs[5])
     def func(pop):
-        x = torch.matmul(pop, coefs)
+        x = operator(pop)
         best_scores.append(torch.max(x))
 
         return x
 
     start = time()
-    for i in tqdm(range(100)):
-        ga.new_population(func, i)
+    for i in tqdm(range(1000)):
+        ga.new_population(func, i, 3)
     
     print(ga.best_individual())
     print(coefs)
