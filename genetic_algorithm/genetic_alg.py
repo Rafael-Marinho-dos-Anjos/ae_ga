@@ -57,7 +57,7 @@ class GeneticAlgorithm(nn.Module):
         return son
 
     def new_population(self, func, generation = 0):
-        self.update_scores(self.objective_func(func))
+        self.update_scores(func(self.population))
         self.gen = generation
         
         new_population = torch.zeros(self.population.shape)
@@ -84,19 +84,24 @@ class GeneticAlgorithm(nn.Module):
 
 if __name__ == "__main__":
     from time import time
+    from tqdm import tqdm
+    import matplotlib.pyplot as plt
+
+
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     device = torch.device("cpu")
-    ga = GeneticAlgorithm(1000, 50, device=device)
-    coefs = torch.rand((50), device=device)
+    ga = GeneticAlgorithm(100, 5, device=device)
+    coefs = torch.rand((5), device=device)
 
+    best_scores = list()
     def func(pop):
         x = torch.matmul(pop, coefs)
-        print("", i, torch.max(x))
+        best_scores.append(torch.max(x))
 
         return x
 
     start = time()
-    for i in range(1000):
+    for i in tqdm(range(100)):
         ga.new_population(func, i)
     
     index = torch.max(ga.scores, dim=0).indices
@@ -105,3 +110,7 @@ if __name__ == "__main__":
 
     print("\n\nTempo de execução: {} segundos".format(time() - start))
     print(f"Device: {device}")
+
+    plt.plot(best_scores)
+    plt.title("Aptidão do melhor indivíduo por geração")
+    plt.show()
